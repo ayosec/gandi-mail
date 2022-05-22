@@ -18,6 +18,8 @@ usage() {
 
 	  emails ls DOMAIN        Show emails in a specific domain.
 	  emails add EMAIL        Add a new email to a domain.
+
+	  alias ls EMAIL          Show aliases for an email address.
 	HELP
   exit 1
 }
@@ -38,7 +40,11 @@ api_request() {
     body=(-H "Content-Type: application/json" --data-binary @-)
   fi
 
-  curl --silent --tlsv1.3 -H "Authorization: Apikey $GANDI_TOKEN" "$url" "$@" "${body[@]}"
+  curl --silent --fail --tlsv1.3            \
+    -H "Authorization: Apikey $GANDI_TOKEN" \
+    "$url"                                  \
+    "$@"                                    \
+    "${body[@]}" || (printf "Request to %s failed\n" "$url" 1>&2; exit 1 )
 }
 
 cmd() {
@@ -130,10 +136,46 @@ emails_add() {
     | jq .
 }
 
+alias_init_env() {
+  local id
+  local email=$1
+  local login=${email/@*}
+  local domain=${email/*@}
+
+  id=$(
+    api_request "/v5/email/mailboxes/$domain" \
+      | jq --arg login "$login" -r \
+        '.[]
+            | select(.login == $login)
+            | .id
+        '
+  )
+
+  if [ -z "$id" ]
+  then
+    printf 'echo %q; exit 1' "Address $email not found."
+    return
+  fi
+
+  printf 'local id=%q\n' "$id"
+  printf 'local login=%q\n' "$login"
+  printf 'local domain=%q\n' "$domain"
+}
+
+alias_list() {
+  [ $# -eq 1 ] || usage
+  eval "$(alias_init_env "$1")"
+
+  api_request "/v5/email/mailboxes/$domain/$id" | jq -r '.aliases[]'
+}
+
+
 cmd domains_list domains
 cmd domains_show domain
 
 cmd emails_list emails ls
-cmd emails_add emails add
+cmd emails_add  emails add
+
+cmd alias_list alias ls
 
 usage
