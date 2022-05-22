@@ -17,6 +17,7 @@ usage() {
 	  domain DOMAIN           Show information about a domain.
 
 	  emails ls DOMAIN        Show emails in a specific domain.
+	  emails add EMAIL        Add a new email to a domain.
 	HELP
   exit 1
 }
@@ -31,7 +32,13 @@ api_request() {
   local url="$GANDI_ORIGIN$1"
   shift
 
-  curl --silent --tlsv1.3 -H "Authorization: Apikey $GANDI_TOKEN" "$url" "$@"
+  declare -a body
+  if [ ! -t 0 ]
+  then
+    body=(-H "Content-Type: application/json" --data-binary @-)
+  fi
+
+  curl --silent --tlsv1.3 -H "Authorization: Apikey $GANDI_TOKEN" "$url" "$@" "${body[@]}"
 }
 
 cmd() {
@@ -54,7 +61,7 @@ cmd() {
   exit
 }
 
-list_domains() {
+domains_list() {
   [ $# -eq 0 ] || usage
 
   (
@@ -74,12 +81,12 @@ list_domains() {
   ) | column -ts $'\t'
 }
 
-show_domain() {
+domains_show() {
   [ $# -eq 1 ] || usage
   api_request "/v5/domain/domains/$1" | jq .
 }
 
-list_emails() {
+emails_list() {
   [ $# -eq 1 ] || usage
 
   (
@@ -100,9 +107,33 @@ list_emails() {
   ) | column -ts $'\t'
 }
 
-cmd list_domains domains
-cmd show_domain domain
+emails_add() {
+  [ $# -eq 1 ] || usage
 
-cmd list_emails emails ls
+  local password
+  local new_email=$1
+  local login=${new_email/@*}
+  local domain=${new_email/*@}
+
+  read -rsp "Password for $new_email:" password
+  echo
+
+  jq \
+      --arg login "$login" \
+      -R <<<"$password"    \
+      '{
+        login: $login,
+        mailbox_type: "standard",
+        password: .
+      }' \
+    | api_request "/v5/email/mailboxes/$domain" \
+    | jq .
+}
+
+cmd domains_list domains
+cmd domains_show domain
+
+cmd emails_list emails ls
+cmd emails_add emails add
 
 usage
