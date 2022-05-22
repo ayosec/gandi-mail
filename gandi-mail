@@ -4,8 +4,12 @@ set -euo pipefail
 
 : "${GANDI_ORIGIN:=https://api.gandi.net}"
 
-
 ARGV=("$@")
+
+CURL_OUTPUT=$(mktemp)
+
+# shellcheck disable=SC2064
+trap "rm '$CURL_OUTPUT'" EXIT
 
 usage() {
   cat <<-HELP
@@ -20,6 +24,8 @@ usage() {
 	  emails add EMAIL        Add a new email to a domain.
 
 	  alias ls EMAIL          Show aliases for an email address.
+	  alias add EMAIL ALIAS   Add a new alias to the email address.
+	  alias rm EMAIL ALIAS    Remove an alias.
 	HELP
   exit 1
 }
@@ -42,9 +48,16 @@ api_request() {
 
   curl --silent --fail --tlsv1.3            \
     -H "Authorization: Apikey $GANDI_TOKEN" \
+    --output "$CURL_OUTPUT"                 \
     "$url"                                  \
     "$@"                                    \
-    "${body[@]}" || (printf "Request to %s failed\n" "$url" 1>&2; exit 1 )
+    "${body[@]}" || (
+      printf "Request to %s failed\n" "$url" 1>&2
+      cat "$CURL_OUTPUT" 1>&2
+      exit 1
+    )
+
+  cat "$CURL_OUTPUT"
 }
 
 cmd() {
@@ -169,6 +182,38 @@ alias_list() {
   api_request "/v5/email/mailboxes/$domain/$id" | jq -r '.aliases[]'
 }
 
+alias_add() {
+  [ $# -eq 2 ] || usage
+
+  local body
+  local email=$1
+  local new_alias=$2
+
+  eval "$(alias_init_env "$email")"
+
+  body=$(
+    api_request "/v5/email/mailboxes/$domain/$id" \
+      | jq --arg new_alias "$new_alias" '{ aliases: (.aliases + [$new_alias]) }')
+
+  api_request "/v5/email/mailboxes/$domain/$id" -X PATCH <<<"$body" | jq .
+}
+
+alias_rm() {
+  [ $# -eq 2 ] || usage
+
+  local body
+  local email=$1
+  local old_alias=$2
+
+  eval "$(alias_init_env "$email")"
+
+  body=$(
+    api_request "/v5/email/mailboxes/$domain/$id" \
+      | jq --arg old_alias "$old_alias" '{ aliases: (.aliases - [$old_alias]) }')
+
+  api_request "/v5/email/mailboxes/$domain/$id" -X PATCH <<<"$body" | jq .
+}
+
 
 cmd domains_list domains
 cmd domains_show domain
@@ -177,5 +222,7 @@ cmd emails_list emails ls
 cmd emails_add  emails add
 
 cmd alias_list alias ls
+cmd alias_add  alias add
+cmd alias_rm   alias rm
 
 usage
