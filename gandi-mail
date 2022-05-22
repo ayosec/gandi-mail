@@ -33,7 +33,7 @@ usage() {
 api_request() {
   if [ -z "${GANDI_KEY:-}" ]
   then
-    local config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/gandi-emails
+    local config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/gandi-mail
     local key_file="$config_dir/api-key"
 
     if [ -f "$key_file.gpg" ]
