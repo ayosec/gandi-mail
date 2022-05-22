@@ -1,0 +1,84 @@
+#!/bin/bash
+
+set -euo pipefail
+
+: "${GANDI_ORIGIN:=https://api.gandi.net}"
+
+
+ARGV=("$@")
+
+usage() {
+  cat <<-HELP
+	Usage $0 [command]
+
+	  Available commands:
+
+	    domains          Show domains owned by your user.
+	    domain DOMAIN    Show information about a domain.
+	    emails DOMAIN    Show emails in a specific domain
+	HELP
+  exit 1
+}
+
+api_request() {
+  if [ -z "${GANDI_TOKEN:-}" ]
+  then
+    local CONFIG_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/gandi-emails
+    GANDI_TOKEN=$(gpg -qd "$CONFIG_DIR/api-key.gpg")
+  fi
+
+  local url="$GANDI_ORIGIN$1"
+  shift
+
+  curl --silent --tlsv1.3 -H "Authorization: Apikey $GANDI_TOKEN" "$url" "$@"
+}
+
+cmd() {
+  HANDLER=$1
+  shift
+  local argv=("${ARGV[@]}")
+
+  while [ $# -gt 0 ]
+  do
+    if [ "$1" = "${argv[0]:-}" ]
+    then
+      shift
+      argv=("${argv[@]:1}")
+    else
+      return 0
+    fi
+  done
+
+  "$HANDLER" "${argv[@]}"
+  exit
+}
+
+list_domains() {
+  [ $# -eq 0 ] || usage
+
+  (
+    printf 'FQDN\tAUTORENEW\tCREATED AT\tREGISTRY ENDS AT\n'
+
+    api_request "/v5/domain/domains" \
+      | jq -r  '
+          .[]
+            | [
+                .fqdn,
+                .autorenew,
+                (.dates.created_at | split("T") | .[0]),
+                (.dates.registry_ends_at | split("T") | .[0])
+              ]
+            | join("\t")
+        ' \
+  ) | column -ts $'\t'
+}
+
+show_domain() {
+  [ $# -eq 1 ] || usage
+  api_request "/v5/domain/domains/$1" | jq .
+}
+
+cmd list_domains domains
+cmd show_domain domain
+
+usage
