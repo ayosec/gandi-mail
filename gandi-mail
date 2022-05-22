@@ -11,11 +11,12 @@ usage() {
   cat <<-HELP
 	Usage $0 [command]
 
-	  Available commands:
+	  COMMANDS:
 
-	    domains          Show domains owned by your user.
-	    domain DOMAIN    Show information about a domain.
-	    emails DOMAIN    Show emails in a specific domain
+	  domains                 Show domains owned by your user.
+	  domain DOMAIN           Show information about a domain.
+
+	  emails ls DOMAIN        Show emails in a specific domain.
 	HELP
   exit 1
 }
@@ -78,7 +79,30 @@ show_domain() {
   api_request "/v5/domain/domains/$1" | jq .
 }
 
+list_emails() {
+  [ $# -eq 1 ] || usage
+
+  (
+    printf 'ADDRESS\tTYPE\tQUOTA USED\tALIASES\tID\n'
+
+    api_request "/v5/email/mailboxes/$1?per_page=100" \
+      | jq -r  '
+          .[]
+            | [
+                .address,
+                .mailbox_type,
+                .quota_used,
+                .alias_count,
+                .id
+              ]
+            | join("\t")
+        ' \
+  ) | column -ts $'\t'
+}
+
 cmd list_domains domains
 cmd show_domain domain
+
+cmd list_emails emails ls
 
 usage
