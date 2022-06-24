@@ -148,6 +148,10 @@ emails_add() {
   read -rsp "Password for $new_email:" password
   echo
 
+  password=$(
+    printf "%s" "$password" | mkpasswd --method=sha512crypt --stdin
+  )
+
   jq \
       --arg login "$login" \
       -R <<<"$password"    \
