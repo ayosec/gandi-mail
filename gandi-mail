@@ -57,7 +57,7 @@ api_request() {
     body=(-H "Content-Type: application/json" --data-binary @-)
   fi
 
-  curl --silent --fail --tlsv1.3          \
+  curl --silent --fail --tlsv1.2          \
     -H "Authorization: Apikey $GANDI_KEY" \
     --output "$CURL_OUTPUT"               \
     "$url"                                \
